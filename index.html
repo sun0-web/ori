@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ori · 원래의 나로 돌아가는 길</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="bg-decoration" aria-hidden="true">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+        <div class="grain"></div>
+    </div>
+
+    <div class="container">
+        <header class="topbar">
+            <div class="brand">
+                <a href="#" class="brand-logo" aria-label="Ori — 근원으로 돌아가는 길">
+                    <h1 class="brand-name">Ori<span class="brand-dot">.</span></h1>
+                    <p class="brand-tagline">
+                        <span class="tagline-en">a path back to origin</span>
+                        <span class="tagline-sep">·</span>
+                        <span class="tagline-ko">근원의 나로 돌아가는 길</span>
+                    </p>
+                </a>
+            </div>
+
+            <div class="topbar-controls">
+                <button id="privacy-btn" class="icon-btn" title="내 데이터 관리" aria-label="내 데이터 관리">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </button>
+                <button id="reset-btn" class="icon-btn" title="대화 새로 시작" aria-label="대화 새로 시작">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>
+                </button>
+                <div class="theme-toggle">
+                    <input type="checkbox" id="theme-switch" aria-label="다크 모드">
+                    <label for="theme-switch">
+                        <span class="theme-icon">☀</span>
+                        <span class="theme-icon">☾</span>
+                    </label>
+                </div>
+            </div>
+        </header>
+
+        <main class="layout">
+            <aside class="side-panel">
+                <!-- 사이드 패널 탭 -->
+                <nav class="panel-tabs glass-card">
+                    <button class="panel-tab active" data-panel="status">
+                        <span class="tab-icon">◉</span><span>현재</span>
+                    </button>
+                    <button class="panel-tab" data-panel="insights">
+                        <span class="tab-icon">✦</span><span>통찰</span>
+                    </button>
+                    <button class="panel-tab" data-panel="journal">
+                        <span class="tab-icon">∿</span><span>기록</span>
+                    </button>
+                </nav>
+
+                <!-- 현재 뷰 -->
+                <div class="panel-view active" data-view="status">
+                    <section class="glass-card status-card">
+                        <div class="card-header">
+                            <span class="card-eyebrow">현재 상태</span>
+                            <span id="mode-badge" class="mode-badge mode-daily">일상 모드</span>
+                        </div>
+                        <p id="mode-description" class="card-body">
+                            가벼운 우울감과 무기력을 함께 들여다보는 정서 공감 대화 모드입니다.
+                        </p>
+                        <div id="assessment-progress" class="progress-block hidden">
+                            <div class="progress-label">
+                                <span id="progress-text">진행 중</span>
+                                <span id="progress-count">0 / 20</span>
+                            </div>
+                            <div class="progress-track">
+                                <div id="progress-fill" class="progress-fill"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="glass-card tools-card">
+                        <span class="card-eyebrow">잠시 숨 고르기</span>
+                        <div class="tool-grid tool-grid-2">
+                            <button class="tool-btn" data-tool="breathing"><span class="tool-icon">⊙</span><span class="tool-label">호흡 가이드</span></button>
+                            <button class="tool-btn" data-tool="mood"><span class="tool-icon">♡</span><span class="tool-label">기분 기록</span></button>
+                            <button class="tool-btn" data-tool="satisfaction"><span class="tool-icon">✎</span><span class="tool-label">만족도 평가</span></button>
+                        </div>
+                    </section>
+
+                    <section class="glass-card emergency-card">
+                        <span class="card-eyebrow">긴급 상담 연계</span>
+                        <p class="emergency-lead">혼자 견디지 마세요. 24시간 전문가가 곁에 있어요.</p>
+                        <ul class="hotline-list">
+                            <li class="hotline">
+                                <div class="hotline-info">
+                                    <span class="hotline-name">정신건강위기상담</span>
+                                    <span class="hotline-num">1577-0195</span>
+                                </div>
+                                <a href="tel:1577-0195" class="hotline-call" aria-label="전화 걸기">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                </a>
+                            </li>
+                            <li class="hotline">
+                                <div class="hotline-info">
+                                    <span class="hotline-name">자살예방상담</span>
+                                    <span class="hotline-num">1393</span>
+                                </div>
+                                <a href="tel:1393" class="hotline-call" aria-label="전화 걸기">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                </a>
+                            </li>
+                        </ul>
+                        <button class="location-btn" id="locate-btn">📍 가까운 트라우마센터 찾기</button>
+                    </section>
+                </div>
+
+                <!-- 통찰 뷰 -->
+                <div class="panel-view" data-view="insights">
+                    <section class="glass-card insights-card">
+                        <span class="card-eyebrow">최근 7일 기분 흐름</span>
+                        <div id="mood-spark" class="mood-spark"></div>
+                        <p id="mood-summary" class="insight-summary">아직 충분한 기록이 없어요. 오늘의 마음을 적어볼까요?</p>
+                    </section>
+
+                    <section class="glass-card insights-card">
+                        <span class="card-eyebrow">자주 등장한 표현</span>
+                        <div id="lexicon-cloud" class="lexicon-cloud">
+                            <p class="empty-hint">대화가 쌓이면 자주 쓰시는 단어가 여기에 모여요.</p>
+                        </div>
+                    </section>
+
+                    <section class="glass-card insights-card">
+                        <span class="card-eyebrow">패턴 관찰</span>
+                        <ul id="pattern-list" class="pattern-list">
+                            <li class="empty-hint">아직 관찰된 패턴이 없어요.</li>
+                        </ul>
+                    </section>
+
+                    <section class="glass-card insights-card">
+                        <span class="card-eyebrow">자가 점검 추이</span>
+                        <div id="assessment-history" class="assessment-history">
+                            <p class="empty-hint">자가 점검을 진행하면 점수 변화를 볼 수 있어요.</p>
+                        </div>
+                    </section>
+
+                    <section class="glass-card insights-card">
+                        <span class="card-eyebrow">오리가 기억하는 것</span>
+                        <div id="memory-display" class="memory-display">
+                            <p class="empty-hint">대화가 쌓이면 자주 언급하시는 사람·주제를 기억해 두고, 다음에 자연스럽게 여쭤볼게요.</p>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- 기록 뷰 -->
+                <div class="panel-view" data-view="journal">
+                    <section class="glass-card journal-card">
+                        <div class="card-header">
+                            <span class="card-eyebrow">기분 기록</span>
+                            <button id="add-mood-btn" class="mini-btn">＋ 기록</button>
+                        </div>
+                        <div id="mood-log-list" class="mood-log-list">
+                            <p class="empty-hint">아직 기록이 없어요.</p>
+                        </div>
+                    </section>
+                </div>
+            </aside>
+
+            <!-- 채팅 -->
+            <section class="glass-card chat-card">
+                <div class="chat-header">
+                    <div class="chat-avatar">
+                        <span class="chat-avatar-mark">o<span class="brand-dot">.</span></span>
+                    </div>
+                    <div class="chat-meta">
+                        <h2 class="chat-title">오리 <span class="chat-status-dot"></span></h2>
+                        <p class="chat-subtitle">곁에 있어요 <span id="chat-model-badge" class="model-badge"></span></p>
+                    </div>
+                </div>
+
+                <div id="chat-window" class="chat-window" aria-live="polite"></div>
+
+                <div id="quick-replies" class="quick-replies hidden"></div>
+
+                <div class="chat-input-area">
+                    <input type="text" id="user-input"
+                           placeholder="마음속 이야기를 들려주세요…"
+                           autocomplete="off" maxlength="500">
+                    <button id="send-btn" aria-label="전송">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer-note">
+            <p>이 서비스는 의료 행위가 아닌 정서적 지지를 위한 도구입니다. 전문적 진단·치료가 필요할 땐 반드시 의료진과 상담해 주세요.</p>
+        </footer>
+    </div>
+
+    <!-- 호흡 모달 -->
+    <div id="breathing-modal" class="modal hidden" role="dialog" aria-hidden="true">
+        <div class="modal-backdrop" data-close-modal></div>
+        <div class="modal-content breathing-content">
+            <button class="modal-close" data-close-modal aria-label="닫기">✕</button>
+            <h3 class="modal-title">함께 숨을 골라봐요</h3>
+            <p class="modal-sub">4초 들이쉬고 · 7초 멈추고 · 8초 내쉬기</p>
+            <div class="breathing-circle">
+                <div class="breathing-circle-inner"></div>
+                <span id="breathing-phase">시작</span>
+            </div>
+            <p id="breathing-counter" class="breathing-counter">준비되면 시작 버튼을 눌러주세요</p>
+            <button id="breathing-start" class="primary-btn">시작</button>
+        </div>
+    </div>
+
+    <!-- 안전 계획 모달 -->
+    <div id="safety-modal" class="modal hidden" role="dialog" aria-hidden="true">
+        <div class="modal-backdrop" data-close-modal></div>
+        <div class="modal-content safety-content">
+            <button class="modal-close" data-close-modal aria-label="닫기">✕</button>
+            <h3 class="modal-title">나만의 안전 계획</h3>
+            <p class="modal-sub">위기 순간에 펼쳐볼 수 있도록 미리 적어두는 길잡이예요. 자살예방 표준 도구(Stanley-Brown Safety Plan)를 기반으로 합니다.</p>
+
+            <div class="safety-form">
+                <div class="safety-field">
+                    <label>1. 위험 신호 — 마음이 무너지기 전 보이는 변화</label>
+                    <textarea data-safety="warnings" rows="2" placeholder="예) 잠을 잘 못 잔다, 사람들과 연락을 끊는다…"></textarea>
+                </div>
+                <div class="safety-field">
+                    <label>2. 혼자 할 수 있는 대처</label>
+                    <textarea data-safety="coping" rows="2" placeholder="예) 산책, 음악 듣기, 호흡 가이드…"></textarea>
+                </div>
+                <div class="safety-field">
+                    <label>3. 기분을 환기시켜주는 사람·장소</label>
+                    <textarea data-safety="distractions" rows="2" placeholder="예) 카페에서 친구 만나기, 좋아하는 공원…"></textarea>
+                </div>
+                <div class="safety-field">
+                    <label>4. 도움을 요청할 사람 (이름 · 연락처)</label>
+                    <textarea data-safety="supports" rows="2" placeholder="예) 친구 ○○ · 010-XXXX-XXXX"></textarea>
+                </div>
+                <div class="safety-field">
+                    <label>5. 전문가 / 기관</label>
+                    <textarea data-safety="professionals" rows="2" placeholder="예) 다니는 정신건강의학과 · 1577-0199…"></textarea>
+                </div>
+                <div class="safety-field">
+                    <label>6. 환경에서 위험 요소 줄이기</label>
+                    <textarea data-safety="environment" rows="2" placeholder="예) 약은 가족에게 맡겨두기…"></textarea>
+                </div>
+
+                <div class="safety-actions">
+                    <button id="safety-save" class="primary-btn">저장</button>
+                    <button id="safety-export" class="secondary-btn">인쇄 / PDF 저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 데이터 / 개인정보 모달 -->
+    <div id="privacy-modal" class="modal hidden" role="dialog" aria-hidden="true">
+        <div class="modal-backdrop" data-close-modal></div>
+        <div class="modal-content privacy-content">
+            <button class="modal-close" data-close-modal aria-label="닫기">✕</button>
+            <h3 class="modal-title">내 데이터 관리</h3>
+            <p class="modal-sub">오리는 기본적으로 모든 대화·기록을 <strong>이 기기 안에서만</strong> 보관해요. 외부로 전송되지 않습니다.</p>
+
+            <div class="privacy-stats">
+                <div class="privacy-stat"><span class="stat-num" id="stat-messages">0</span><span class="stat-label">대화</span></div>
+                <div class="privacy-stat"><span class="stat-num" id="stat-mood">0</span><span class="stat-label">기록</span></div>
+                <div class="privacy-stat"><span class="stat-num" id="stat-words">0</span><span class="stat-label">학습 단어</span></div>
+                <div class="privacy-stat"><span class="stat-num" id="stat-assessments">0</span><span class="stat-label">자가점검</span></div>
+            </div>
+
+            <div class="privacy-toggle">
+                <label class="toggle-row">
+                    <span>
+                        <strong>개인 학습 모드</strong>
+                        <small>제 응답을 당신의 어휘에 맞춰 점점 자연스럽게 만들어요. 이 기기 안에서만 작동합니다.</small>
+                    </span>
+                    <span class="switch-wrap">
+                        <input type="checkbox" id="learning-toggle" checked>
+                        <span class="switch"></span>
+                    </span>
+                </label>
+
+                <label class="toggle-row">
+                    <span>
+                        <strong>오리 발전에 기여하기</strong>
+                        <small>익명화된 패턴(감정 카테고리 분포·점수·시간대)만 서버로 보내, 모델이 더 정확해지도록 도와요. 대화 원문은 절대 전송되지 않습니다.</small>
+                        <small id="contribution-status" class="contribution-status">아직 기여하지 않는 중 · 옵트인 필요</small>
+                    </span>
+                    <span class="switch-wrap">
+                        <input type="checkbox" id="contribution-toggle">
+                        <span class="switch"></span>
+                    </span>
+                </label>
+            </div>
+
+            <div class="privacy-actions">
+                <button id="export-data" class="secondary-btn">데이터 내보내기 (JSON)</button>
+                <button id="delete-data" class="danger-btn">모든 데이터 삭제</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 데이터 기여 동의 다이얼로그 (PIPA 별도 동의) -->
+    <div id="consent-modal" class="modal hidden" role="dialog" aria-hidden="true">
+        <div class="modal-backdrop" data-close-modal></div>
+        <div class="modal-content consent-content">
+            <button class="modal-close" data-close-modal aria-label="닫기">✕</button>
+            <h3 class="modal-title">오리 발전에 기여하시겠어요?</h3>
+            <p class="modal-sub">정신건강 정보는 가장 민감한 개인정보예요. 그래서 별도 동의를 받습니다.</p>
+
+            <div class="consent-block">
+                <h4 class="consent-h">전송되는 것</h4>
+                <ul class="consent-list ok">
+                    <li>감정 카테고리 분포 (예: 슬픔 12회, 불안 8회 — 단어 자체는 빈도 해시)</li>
+                    <li>PCL-5 / IES-R 익명 점수와 변화 추이</li>
+                    <li>세션 길이·시간대(시 단위)·기분 점수</li>
+                    <li>난수로 생성된 익명 ID (재식별 불가)</li>
+                </ul>
+                <h4 class="consent-h">전송되지 않는 것</h4>
+                <ul class="consent-list no">
+                    <li>대화 원문, 노트, 안전 계획 내용</li>
+                    <li>이름·연락처·위치·기기 정보</li>
+                    <li>당신을 특정할 수 있는 모든 정보</li>
+                </ul>
+            </div>
+
+            <p class="consent-foot">
+                동의하셔도 언제든 같은 자리에서 끄실 수 있어요. 끄는 즉시 전송이 멈추고,
+                <a href="#" id="delete-server-data" class="consent-link">서버에서 내 기여분 삭제 요청</a>도 가능합니다.
+            </p>
+
+            <div class="consent-actions">
+                <button id="consent-decline" class="secondary-btn">아니요, 로컬만 쓸게요</button>
+                <button id="consent-accept" class="primary-btn">동의하고 기여하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 기분 기록 모달 -->
+    <div id="mood-modal" class="modal hidden" role="dialog" aria-hidden="true">
+        <div class="modal-backdrop" data-close-modal></div>
+        <div class="modal-content mood-modal-content">
+            <button class="modal-close" data-close-modal aria-label="닫기">✕</button>
+            <h3 class="modal-title">지금 기분</h3>
+            <p class="modal-sub">한 단어로 표현해도, 길게 적어도 좋아요.</p>
+
+            <div class="mood-slider-wrap">
+                <div class="mood-slider-labels">
+                    <span>매우 힘듦</span>
+                    <span>괜찮음</span>
+                    <span>좋음</span>
+                </div>
+                <input type="range" id="mood-slider" min="1" max="10" value="5">
+                <div class="mood-slider-value">
+                    <span id="mood-emoji">😐</span>
+                    <span id="mood-value">5</span>
+                </div>
+            </div>
+
+            <textarea id="mood-note" rows="3" placeholder="어떤 일이 있었나요? (선택)"></textarea>
+
+            <div class="mood-actions">
+                <button id="save-mood" class="primary-btn">기록하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 만족도 조사 모달 -->
+    <div id="satisfaction-modal" class="modal hidden" role="dialog" aria-hidden="true">
+        <div class="modal-backdrop" data-close-modal></div>
+        <div class="modal-content satisfaction-content">
+            <button class="modal-close" data-close-modal aria-label="닫기">✕</button>
+            <h3 class="modal-title">잠깐, 오리를 평가해 주세요</h3>
+            <p class="modal-sub">짧은 평가로 오리가 더 잘 도와드릴 수 있어요. 익명으로 처리됩니다.</p>
+
+            <div id="satisfaction-form">
+                <div class="satisfaction-intro">
+                    솔직하게 답해 주실수록 도움이 돼요. 다섯 단계 중 편한 곳을 골라주세요.
+                </div>
+
+                <div class="satisfaction-q">
+                    <label class="satisfaction-q-label">1. 오늘 오리의 응답이 도움이 되었나요?</label>
+                    <div class="star-row" data-field="helpfulness">
+                        <button type="button" class="star-btn" data-value="1">★</button>
+                        <button type="button" class="star-btn" data-value="2">★</button>
+                        <button type="button" class="star-btn" data-value="3">★</button>
+                        <button type="button" class="star-btn" data-value="4">★</button>
+                        <button type="button" class="star-btn" data-value="5">★</button>
+                    </div>
+                    <div class="star-meta"><span>전혀 아니에요</span><span>매우 그래요</span></div>
+                </div>
+
+                <div class="satisfaction-q">
+                    <label class="satisfaction-q-label">2. 사용하기 쉬웠나요?</label>
+                    <div class="star-row" data-field="ease">
+                        <button type="button" class="star-btn" data-value="1">★</button>
+                        <button type="button" class="star-btn" data-value="2">★</button>
+                        <button type="button" class="star-btn" data-value="3">★</button>
+                        <button type="button" class="star-btn" data-value="4">★</button>
+                        <button type="button" class="star-btn" data-value="5">★</button>
+                    </div>
+                    <div class="star-meta"><span>어려웠어요</span><span>매우 편했어요</span></div>
+                </div>
+
+                <div class="satisfaction-q">
+                    <label class="satisfaction-q-label">3. 다시 사용할 의향이 있나요?</label>
+                    <div class="star-row" data-field="reuseIntent">
+                        <button type="button" class="star-btn" data-value="1">★</button>
+                        <button type="button" class="star-btn" data-value="2">★</button>
+                        <button type="button" class="star-btn" data-value="3">★</button>
+                        <button type="button" class="star-btn" data-value="4">★</button>
+                        <button type="button" class="star-btn" data-value="5">★</button>
+                    </div>
+                    <div class="star-meta"><span>없어요</span><span>꼭 다시 쓸래요</span></div>
+                </div>
+
+                <div class="satisfaction-q">
+                    <label class="satisfaction-q-label">4. 가장 도움이 된 기능은? (선택)</label>
+                    <div class="feature-chips" data-field="bestFeature">
+                        <button type="button" class="feature-chip" data-value="자가진단">자가진단</button>
+                        <button type="button" class="feature-chip" data-value="상담 응답">상담 응답</button>
+                        <button type="button" class="feature-chip" data-value="기분 기록">기분 기록</button>
+                        <button type="button" class="feature-chip" data-value="위기 연계">위기 연계</button>
+                        <button type="button" class="feature-chip" data-value="안전 계획">안전 계획</button>
+                    </div>
+                </div>
+
+                <div class="satisfaction-q">
+                    <label class="satisfaction-q-label">5. 개선 의견 (선택)</label>
+                    <textarea id="satisfaction-comment" class="satisfaction-comment" rows="3"
+                        placeholder="더 좋아졌으면 하는 점, 불편했던 점을 자유롭게 적어주세요."></textarea>
+                </div>
+
+                <div class="satisfaction-actions">
+                    <button type="button" class="secondary-btn" data-close-modal>나중에</button>
+                    <button type="button" id="satisfaction-submit" class="primary-btn">제출</button>
+                </div>
+            </div>
+
+            <div id="satisfaction-thanks" class="satisfaction-thanks hidden">
+                <div class="check-mark">✓</div>
+                <p>소중한 의견 감사합니다.</p>
+                <p style="font-size:12px; color:var(--ink-soft); margin-top:6px;">
+                    답해주신 평가는 오리를 더 잘 만드는 데 익명으로 활용돼요.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+flask
+flask-cors
+sqlalchemy
+google-generativeai
+scikit-learn
+numpy
