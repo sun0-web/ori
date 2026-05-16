@@ -30,7 +30,7 @@ const API_BASE = (() => {
     if (host === 'localhost' || host === '127.0.0.1' || host === '') {
         return 'http://localhost:5000';
     }
-    return ''; // 배포 시 동일 도메인 백엔드, 또는 별도 백엔드 URL로 교체
+    return 'https://ori-hp3l.onrender.com'; // Render 백엔드
 })();
 const API_RESPOND_URL    = API_BASE ? `${API_BASE}/v1/respond`    : '';
 const API_CONTRIBUTE_URL = API_BASE ? `${API_BASE}/v1/contribute` : '';
