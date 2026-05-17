@@ -71,6 +71,10 @@ const state = {
     llmUsage: { date: '', count: 0 },
     lastBotSource: 'rule',
     lastBotAskedFollowup: false,
+    lastFreeTopic: null,        // {intent, userText, botText, ts}
+    geminiSuccessCount: 0,
+    recentUserIntents: [],
+    recentBotSources: [],
     sessionCount: 0,
     lastSession: null,
 
@@ -107,6 +111,10 @@ function saveState() {
             llmUsage: state.llmUsage,
             lastBotSource: state.lastBotSource,
             lastBotAskedFollowup: state.lastBotAskedFollowup,
+            lastFreeTopic: state.lastFreeTopic,
+            geminiSuccessCount: state.geminiSuccessCount,
+            recentUserIntents: state.recentUserIntents,
+            recentBotSources: state.recentBotSources,
             sessionCount: state.sessionCount,
             lastSession: state.lastSession,
             learningEnabled: state.learningEnabled,
@@ -139,6 +147,10 @@ function loadState() {
         if (!state.llmUsage) state.llmUsage = { date: '', count: 0 };
         if (!state.lastBotSource) state.lastBotSource = 'rule';
         if (typeof state.lastBotAskedFollowup !== 'boolean') state.lastBotAskedFollowup = false;
+        if (!state.lastFreeTopic) state.lastFreeTopic = null;
+        if (typeof state.geminiSuccessCount !== 'number') state.geminiSuccessCount = 0;
+        if (!Array.isArray(state.recentUserIntents)) state.recentUserIntents = [];
+        if (!Array.isArray(state.recentBotSources)) state.recentBotSources = [];
         if (!state.entityMemory) state.entityMemory = {};
         if (!state.themeMemory) state.themeMemory = {};
         if (!state.episodicLog) state.episodicLog = [];
@@ -896,7 +908,10 @@ function incrementLLMUsage() {
 function classifyUserIntent(text) {
     const t = (text || '').trim().toLowerCase();
     if (!t) return 'unknown';
-    if (/(점검|진단|검사|체크|자가\s*진단|자기\s*점검|상태\s*점검|먼저\s*점검|평가|테스트)/.test(t)) return 'assessment';
+    if (/(그만|중단|안\s*할래|안해|하지마|됐어|싫어|진단\s*말고|점검\s*말고|검사\s*말고|자가\s*진단\s*말고|자유\s*대화|대화로\s*넘어가|그냥\s*대화|그만하고\s*싶어|그만\s*대화하고\s*싶어|그만대화하고\s*싶다고)/.test(t)) return 'cancelAssessment';
+    if (/(점검|진단|검사|체크|자가\s*진단|자기\s*점검|상태\s*점검|먼저\s*점검|평가|테스트|마음\s*점검|심리\s*점검)/.test(t)) return 'assessment';
+    if (/(뭐하냐|왜\s*이래|말귀|못\s*알아듣|아니잖아|너가\s*알려줘야지|어쩌라고|시발|씨발|미친|병신)/.test(t)) return 'frustration';
+    if (/(더\s*자세하게|자세히|자세하게|더\s*알려줘|계속|이어서|다시|다시\s*알려줘|제대로\s*알려줘|설명해|풀어서|구체적으로|더\s*구체적으로|그거|그걸로|그\s*얘기|아까\s*거|방금\s*거)/.test(t)) return 'followup';
     if (/(죽고\s*싶|자살|자해|힘들|불안|우울|무기력|잠\s*못|잠이\s*안|공황|트라우마|외롭|괴로|상담|지쳤|무섭)/.test(t)) return 'mental';
     if (/(레시피|요리|만드는\s*법|만들어|음식|먹었|먹고|짜장면|라면|김치|볶음밥|파스타|찌개|카레|떡볶이|치킨|밥|국수)/.test(t)) return 'food';
     if (/(공부|과제|보고서|시험|정리|설명|요약|논문|발표|숙제|문제|풀이|개념)/.test(t)) return 'study';
@@ -910,21 +925,49 @@ function isShortReaction(text) {
     return /^[0-9]+$/.test(t) || /^(응|네|예|아니|아뇨|몰라|그냥|음|어|ㅇㅇ|ㄴㄴ|ok|okay)$/i.test(t);
 }
 
+function hasRecentFreeTopic() {
+    return !!(state.lastFreeTopic && Date.now() - state.lastFreeTopic.ts < 10 * 60 * 1000);
+}
+
+function hasFreeTopicKeyword(text) {
+    return /(짜장면|간짜장|레시피|요리|공부|과제|보고서|설명|정리|자세히|자세하게|다시|계속|알려줘|해줘)/.test(text || '');
+}
+
 function canUseShortGeminiFollowup(text, context = {}) {
     if (state.flow !== 'idle') return false;
     if (context.crisis === 'high') return false;
-    if (classifyUserIntent(text) === 'assessment') return false;
+    const intent = classifyUserIntent(text);
+    if (intent === 'assessment' || intent === 'cancelAssessment') return false;
     if (isShortReaction(text)) return false;
+    if (intent === 'followup' && hasRecentFreeTopic()) return true;
+    if (intent === 'frustration' && hasRecentFreeTopic()) return true;
+    if (hasRecentFreeTopic() && hasFreeTopicKeyword(text)) return true;
     if (state.lastBotSource !== 'gemini') return false;
     if (!state.lastBotAskedFollowup) return false;
     return true;
 }
 
+function rememberFreeTopic(userText, botText, intent) {
+    if (!['food', 'study', 'casual', 'unknown'].includes(intent)) return;
+    state.lastFreeTopic = {
+        intent,
+        userText: userText || '',
+        botText: botText || '',
+        ts: Date.now(),
+    };
+}
+
+function trackBotSource(source) {
+    state.recentBotSources = [...(state.recentBotSources || []), source || 'rule'].slice(-4);
+}
+
 function shouldCallLLM(text, sentiment, context = {}) {
     if (state.flow !== 'idle') return false;
     if (context.crisis === 'high') return false;
-    if (classifyUserIntent(text) === 'assessment') return false;
+    const intent = classifyUserIntent(text);
+    if (intent === 'assessment' || intent === 'cancelAssessment') return false;
     if (isShortReaction(text)) return false;
+    if ((intent === 'followup' || intent === 'frustration') && hasRecentFreeTopic()) return true;
     if ((text || '').trim().length < 8 && !canUseShortGeminiFollowup(text, context)) return false;
     if (isUserLLMLimitExceeded()) return false;
     if (!API_BASE || !API_RESPOND_URL) return false;
@@ -936,18 +979,12 @@ function buildLimitedModeResponse(text, reason = 'quota-limited') {
     if (intent === 'assessment') {
         return { text: '좋아요. 어떤 점검을 해볼까요?', typingMs: 600, source: 'rule', reason: 'assessment-request' };
     }
-    if (intent === 'mental') {
-        const r = buildRuleResponse(text, classifySentiment(text), { forceMental: true });
-        return { ...r, source: 'rule' };
-    }
-    const replies = {
-        food: '지금은 AI 응답 한도 때문에 자세한 답변 생성은 어렵지만, 음식 이야기로 이어갈 수는 있어요. 잠시 후 다시 물어봐 주세요.',
-        study: '지금은 AI 응답이 제한되어 자세한 정리는 어렵지만, 자료를 주시면 기본 흐름은 이어갈 수 있어요. 잠시 후 다시 시도해 주세요.',
-        casual: '그렇군요. 그 이야기로 가볍게 이어가도 괜찮아요.',
-        meta: '지금은 AI 응답 한도가 잠시 제한되어 기본 응답으로 작동 중이에요. 그래서 답변이 단순할 수 있어요.',
-        unknown: '지금은 AI 응답이 제한되어 자세히 풀어내기 어려워요. 조금 뒤 다시 시도해 주세요.',
+    return {
+        text: '현재 AI 응답 한도 때문에 일반 대화 답변은 잠시 사용할 수 없습니다. 자가진단, 기분 기록, 위기 상담 안내는 계속 사용할 수 있습니다. 잠시 후 다시 시도해 주세요.',
+        typingMs: 700,
+        source: 'limited',
+        reason,
     };
-    return { text: replies[intent] || replies.unknown, typingMs: 700, source: 'limited', reason };
 }
 
 /**
@@ -1137,10 +1174,15 @@ async function callLLMBackend(text, sentiment) {
 
     const payload = {
         userMessage: text,
+        message: text,
         sentiment,
+        intent: classifyUserIntent(text),
         context: buildLLMContext(),
         history: recentHistory,
     };
+    if (['followup', 'frustration'].includes(payload.intent) && hasRecentFreeTopic()) {
+        payload.lastFreeTopic = state.lastFreeTopic;
+    }
 
     // 타임아웃 가드 — 6초 이상 걸리면 폴백
     const controller = new AbortController();
@@ -1189,6 +1231,7 @@ async function callLLMBackend(text, sentiment) {
         state.lastLLMFallbackReason = null;
         if (data.source === 'gemini' && data.text && data.fallback !== true) {
             incrementLLMUsage();
+            state.geminiSuccessCount = (state.geminiSuccessCount || 0) + 1;
         }
         return { text: data.text, source: data.source || 'gemini' };
     } catch (err) {
@@ -1217,6 +1260,9 @@ async function buildResponse(text, sentiment) {
     const llm = canCallLLM ? await callLLMBackend(text, sentiment) : null;
     if (llm) {
         updateChatModelBadge(llm.source);
+        if (llm.source === 'gemini') {
+            rememberFreeTopic(text, llm.text, classifyUserIntent(text));
+        }
         // LLM 응답에 맞춰 타이핑 시간 — 텍스트 길이 비례
         const baseMs = 600 + llm.text.length * 18;
         const typingMs = ['sad','anxious','tired'].includes(sentiment)
@@ -1508,7 +1554,8 @@ function hideTyping() {
 function updateLastBotRouting(source = 'rule', text = '') {
     state.lastBotSource = source || 'rule';
     state.lastBotAskedFollowup = source === 'gemini'
-        && /(원하시나요|어떤|선택|할까요|알려주세요|해볼까요|필요하신가요|이어갈까요)/.test(text || '');
+        && /(원하시나요|어떤|선택|할까요|알려주세요|해볼까요|필요하신가요|이어갈까요|원해요|드릴까요)/.test(text || '');
+    trackBotSource(state.lastBotSource);
     saveState();
 }
 
@@ -2618,16 +2665,55 @@ async function offerAssessmentChoice() {
     ]);
 }
 
+function isAssessmentFlowActive() {
+    return state.flow === 'assessment' || state.flow === 'gateway' || !!(state.assessment && state.assessment.type);
+}
+
+function isNoTraumaGatewayAnswer(text) {
+    return state.flow === 'gateway'
+        && /^(없어|아니|아니요|없습니다|그런\s*일\s*없어|경험\s*없어|본\s*적\s*없어|겪은\s*적\s*없어)$/.test((text || '').trim());
+}
+
+async function cancelAssessmentFlow(message = '알겠어요. 점검은 여기서 멈출게요. 이제 자유롭게 이야기하셔도 됩니다.') {
+    state.flow = 'idle';
+    state.mode = 'daily';
+    state.assessment = { type: null, index: 0, answers: [], startedAt: null };
+    state.autoAssessmentSuppressed = true;
+    state.lastBotSource = 'rule';
+    state.lastBotAskedFollowup = false;
+    clearQuickReplies();
+    hideProgress();
+    saveState();
+    await botSay(message, 700, 'rule');
+    showQuickReplies([
+        { label: '바로 이야기할래요', onSelect: () => enterDailyMode() },
+        { label: '가벼운 일상 점검', onSelect: () => proposeMoodCheck() },
+        { label: '지금 너무 힘들어요', onSelect: () => enterCrisisFlow() },
+    ]);
+}
+
 async function handleUserMessage(text) {
     if (!text.trim()) return;
     addMessage(text, 'user');
     userInput.value = '';
     const intent = classifyUserIntent(text);
+    state.recentUserIntents = [...(state.recentUserIntents || []), intent].slice(-6);
+    saveState();
 
     // 1) 위기 감지 우선
     const crisis = detectCrisisLevel(text);
     if (crisis === 'high') {
         await enterCrisisFlow();
+        return;
+    }
+
+    if (intent === 'cancelAssessment' && isAssessmentFlowActive()) {
+        await cancelAssessmentFlow();
+        return;
+    }
+
+    if (isNoTraumaGatewayAnswer(text)) {
+        await cancelAssessmentFlow('알겠어요. 그럼 외상 경험 점검은 진행하지 않을게요. 가벼운 일상 대화나 기분 점검으로 이어갈 수 있어요.');
         return;
     }
 
@@ -2995,6 +3081,10 @@ async function maybeOfferSatisfactionPrompt(lastUserMessage = '') {
     if (DEBUG_DISABLE_AUTO_SATISFACTION) return;
     if (state.flow !== 'idle') return;
     if (isGeneralQuestionInProgress(lastUserMessage)) return;
+    if ((state.recentUserIntents || []).slice(-2).includes('frustration')) return;
+    const recentSources = (state.recentBotSources || []).slice(-2);
+    if (recentSources.length >= 2 && recentSources.every(s => s === 'rule' || s === 'limited')) return;
+    if ((state.geminiSuccessCount || 0) < 3) return;
 
     // 이미 최근에 평가했거나 너무 자주 안내한 경우 패스
     if (state.satisfactionPromptCount >= 2) return;
