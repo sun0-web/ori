@@ -78,7 +78,7 @@ export GEMINI_API_KEY="여기에_발급받은_키_붙여넣기"
 
 # 무료 티어 안정 운영 권장 모델
 export GEMINI_MODEL="gemini-2.5-flash-lite"
-export GLOBAL_DAILY_LLM_LIMIT="300"
+export GLOBAL_DAILY_LLM_LIMIT="1000"
 
 # 실행
 python backend.py
@@ -89,7 +89,7 @@ Render 환경변수 예시:
 ```env
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.5-flash-lite
-GLOBAL_DAILY_LLM_LIMIT=300
+GLOBAL_DAILY_LLM_LIMIT=1000
 ```
 
 성공하면 콘솔에 이렇게 떠요:
@@ -114,6 +114,8 @@ GLOBAL_DAILY_LLM_LIMIT=300
 이번 구성은 유료 결제나 새 API 키 발급 없이 Gemini 무료 티어를 유지한 상태에서 안정성을 높이는 방어선입니다. 기본 모델은 `gemini-2.5-flash-lite`를 권장합니다.
 
 무료 티어에서는 사용량이 몰리면 `429 TooManyRequests`가 발생할 수 있습니다. Ori는 다수 사용자 베타 운영을 위해 브라우저별 일일 AI 응답 제한과 백엔드 전체 일일 호출 제한(`GLOBAL_DAILY_LLM_LIMIT`)을 함께 둡니다.
+
+베타 테스트에서는 사용자별 하루 50회, 전체 하루 1000회를 기본값으로 둡니다. 실제 운영 시에는 API 사용량과 비용을 보며 제한값을 낮추거나 높일 수 있습니다. Gemini 무료 티어 429가 계속 발생하면 `GLOBAL_DAILY_LLM_LIMIT`를 다시 낮추거나 유료 사용량 기반 결제를 검토하세요.
 
 AI 한도를 넘거나 Gemini 호출이 실패하면 기본 응답 또는 AI 제한 모드로 전환됩니다. 제한 모드는 레시피, 학업 설명, 일반 지식 답변을 대신 생성하는 기능이 아니라, 서비스가 엉뚱한 상담형 질문으로 흐르지 않게 막는 안전장치입니다.
 

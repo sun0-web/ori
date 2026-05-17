@@ -36,7 +36,7 @@ const API_RESPOND_URL    = API_BASE ? `${API_BASE}/v1/respond`    : '';
 const API_CONTRIBUTE_URL = API_BASE ? `${API_BASE}/v1/contribute` : '';
 const API_FORGET_URL     = API_BASE ? `${API_BASE}/v1/contribute/forget` : '';
 const DEBUG_DISABLE_AUTO_SATISFACTION = false;
-const DAILY_LLM_LIMIT = 10;
+const DAILY_LLM_LIMIT = 50;
 
 const state = {
     /* 대화 흐름 */

@@ -95,7 +95,7 @@ CORS(app, resources={r"/v1/*": {"origins": "*"}})
 # Gemini 초기화
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 GEMINI_MODEL_NAME = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash-lite')
-GLOBAL_DAILY_LLM_LIMIT = int(os.environ.get('GLOBAL_DAILY_LLM_LIMIT', '300'))
+GLOBAL_DAILY_LLM_LIMIT = int(os.environ.get('GLOBAL_DAILY_LLM_LIMIT', '1000'))
 _LLM_DAILY_COUNTER = {'date': None, 'count': 0}
 
 
