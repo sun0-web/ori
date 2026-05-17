@@ -69,6 +69,8 @@ const state = {
     dailyUserTurns: 0,          // 자유 대화 모드 사용자 메시지 수
     autoAssessmentSuppressed: false, // "바로 이야기" 선택 후 자동 점검 제안 차단
     llmUsage: { date: '', count: 0 },
+    lastBotSource: 'rule',
+    lastBotAskedFollowup: false,
     sessionCount: 0,
     lastSession: null,
 
@@ -103,6 +105,8 @@ function saveState() {
             dailyUserTurns: state.dailyUserTurns,
             autoAssessmentSuppressed: state.autoAssessmentSuppressed,
             llmUsage: state.llmUsage,
+            lastBotSource: state.lastBotSource,
+            lastBotAskedFollowup: state.lastBotAskedFollowup,
             sessionCount: state.sessionCount,
             lastSession: state.lastSession,
             learningEnabled: state.learningEnabled,
@@ -133,6 +137,8 @@ function loadState() {
         if (typeof state.dailyUserTurns !== 'number') state.dailyUserTurns = 0;
         if (typeof state.autoAssessmentSuppressed !== 'boolean') state.autoAssessmentSuppressed = false;
         if (!state.llmUsage) state.llmUsage = { date: '', count: 0 };
+        if (!state.lastBotSource) state.lastBotSource = 'rule';
+        if (typeof state.lastBotAskedFollowup !== 'boolean') state.lastBotAskedFollowup = false;
         if (!state.entityMemory) state.entityMemory = {};
         if (!state.themeMemory) state.themeMemory = {};
         if (!state.episodicLog) state.episodicLog = [];
@@ -890,6 +896,7 @@ function incrementLLMUsage() {
 function classifyUserIntent(text) {
     const t = (text || '').trim().toLowerCase();
     if (!t) return 'unknown';
+    if (/(점검|진단|검사|체크|자가\s*진단|자기\s*점검|상태\s*점검|먼저\s*점검|평가|테스트)/.test(t)) return 'assessment';
     if (/(죽고\s*싶|자살|자해|힘들|불안|우울|무기력|잠\s*못|잠이\s*안|공황|트라우마|외롭|괴로|상담|지쳤|무섭)/.test(t)) return 'mental';
     if (/(레시피|요리|만드는\s*법|만들어|음식|먹었|먹고|짜장면|라면|김치|볶음밥|파스타|찌개|카레|떡볶이|치킨|밥|국수)/.test(t)) return 'food';
     if (/(공부|과제|보고서|시험|정리|설명|요약|논문|발표|숙제|문제|풀이|개념)/.test(t)) return 'study';
@@ -903,11 +910,22 @@ function isShortReaction(text) {
     return /^[0-9]+$/.test(t) || /^(응|네|예|아니|아뇨|몰라|그냥|음|어|ㅇㅇ|ㄴㄴ|ok|okay)$/i.test(t);
 }
 
+function canUseShortGeminiFollowup(text, context = {}) {
+    if (state.flow !== 'idle') return false;
+    if (context.crisis === 'high') return false;
+    if (classifyUserIntent(text) === 'assessment') return false;
+    if (isShortReaction(text)) return false;
+    if (state.lastBotSource !== 'gemini') return false;
+    if (!state.lastBotAskedFollowup) return false;
+    return true;
+}
+
 function shouldCallLLM(text, sentiment, context = {}) {
     if (state.flow !== 'idle') return false;
     if (context.crisis === 'high') return false;
+    if (classifyUserIntent(text) === 'assessment') return false;
     if (isShortReaction(text)) return false;
-    if ((text || '').trim().length < 8) return false;
+    if ((text || '').trim().length < 8 && !canUseShortGeminiFollowup(text, context)) return false;
     if (isUserLLMLimitExceeded()) return false;
     if (!API_BASE || !API_RESPOND_URL) return false;
     return true;
@@ -915,6 +933,9 @@ function shouldCallLLM(text, sentiment, context = {}) {
 
 function buildLimitedModeResponse(text, reason = 'quota-limited') {
     const intent = classifyUserIntent(text);
+    if (intent === 'assessment') {
+        return { text: '좋아요. 어떤 점검을 해볼까요?', typingMs: 600, source: 'rule', reason: 'assessment-request' };
+    }
     if (intent === 'mental') {
         const r = buildRuleResponse(text, classifySentiment(text), { forceMental: true });
         return { ...r, source: 'rule' };
@@ -934,8 +955,13 @@ function buildLimitedModeResponse(text, reason = 'quota-limited') {
  * 반환: { text: string, typingMs: number }
  *   typingMs 는 호출자가 봇 타이핑 시간으로 사용
  */
-function buildGeneralRuleResponse(text) {
+function buildGeneralRuleResponse(text, options = {}) {
     const intent = classifyUserIntent(text);
+    if (intent === 'assessment') return '좋아요. 어떤 점검을 해볼까요?';
+    if (!options.allowLimited) {
+        if (intent === 'food' || intent === 'study' || intent === 'unknown') return '조금만 더 구체적으로 말해주시면 그 흐름으로 이어갈게요.';
+        if (intent === 'meta') return '지금은 기본 응답과 AI 응답을 상황에 맞게 나눠서 사용하고 있어요.';
+    }
     if (intent === 'food') return '지금은 AI 응답 한도 때문에 자세한 답변 생성은 어렵지만, 음식 이야기로 이어갈 수는 있어요. 잠시 후 다시 물어봐 주세요.';
     if (intent === 'study') return '지금은 AI 응답이 제한되어 자세한 정리는 어렵지만, 자료를 주시면 기본 흐름은 이어갈 수 있어요. 잠시 후 다시 시도해 주세요.';
     if (intent === 'casual') return '그렇군요. 그 이야기로 가볍게 이어가도 괜찮아요.';
@@ -946,9 +972,9 @@ function buildGeneralRuleResponse(text) {
 
 function buildRuleResponse(text, sentiment, options = {}) {
     const intent = classifyUserIntent(text);
-    const allowMentalResponse = options.forceMental || intent === 'mental';
+    const allowMentalResponse = options.forceMental || intent === 'mental' || ['sad','anxious','angry','tired'].includes(sentiment);
     const generalResponse = state.flow === 'idle' && state.mode === 'daily' && !allowMentalResponse
-        ? buildGeneralRuleResponse(text)
+        ? buildGeneralRuleResponse(text, options)
         : null;
     if (generalResponse) {
         trackResponse(generalResponse);
@@ -961,7 +987,7 @@ function buildRuleResponse(text, sentiment, options = {}) {
         return { text: response, typingMs: 500 };
     }
 
-    if (!allowMentalResponse && state.flow === 'idle' && state.mode === 'daily') {
+    if (!allowMentalResponse && state.flow === 'idle' && state.mode === 'daily' && options.allowLimited) {
         const limited = buildLimitedModeResponse(text, 'rule-fallback');
         trackResponse(limited.text);
         return { text: limited.text, typingMs: limited.typingMs };
@@ -1208,7 +1234,7 @@ async function buildResponse(text, sentiment) {
     // 2) 폴백 — 규칙 기반
     updateChatModelBadge(state.lastLLMFallbackReason && state.lastLLMFallbackReason.startsWith('backend-') ? 'offline' : 'rule');
     console.log('[Ori] source=rule');
-    const r = buildRuleResponse(text, sentiment);
+    const r = buildRuleResponse(text, sentiment, { allowLimited: canCallLLM });
     return { ...r, source: 'rule' };
 }
 
@@ -1479,10 +1505,22 @@ function hideTyping() {
     if (t) t.remove();
 }
 
-function botSay(text, delay = 700) {
+function updateLastBotRouting(source = 'rule', text = '') {
+    state.lastBotSource = source || 'rule';
+    state.lastBotAskedFollowup = source === 'gemini'
+        && /(원하시나요|어떤|선택|할까요|알려주세요|해볼까요|필요하신가요|이어갈까요)/.test(text || '');
+    saveState();
+}
+
+function botSay(text, delay = 700, source = 'rule') {
     showTyping();
     return new Promise(resolve => {
-        setTimeout(() => { hideTyping(); addMessage(text, 'bot'); resolve(); }, delay);
+        setTimeout(() => {
+            hideTyping();
+            addMessage(text, 'bot');
+            updateLastBotRouting(source, text);
+            resolve();
+        }, delay);
     });
 }
 
@@ -2146,7 +2184,7 @@ async function respondToMood(category) {
     state.awaitingInput = true;
     learnFromMessage(category, category);
     const r = await buildResponse('', category);
-    await botSay(r.text, r.typingMs);
+    await botSay(r.text, r.typingMs, r.source === 'gemini' ? 'gemini' : (r.source === 'limited' ? 'limited' : 'rule'));
     await botSay('어떤 일이 있었는지, 떠오르는 만큼만 들려주세요.', 900);
 }
 
@@ -2563,15 +2601,38 @@ async function offerSuggestion(suggestion) {
     return true;
 }
 
+async function offerAssessmentChoice() {
+    state.flow = 'gateway';
+    state.autoAssessmentSuppressed = false;
+    state.assessment = { type: null, index: 0, answers: [], startedAt: null };
+    state.lastBotSource = 'rule';
+    state.lastBotAskedFollowup = false;
+    clearQuickReplies();
+    hideProgress();
+    saveState();
+    await botSay('좋아요. 어떤 점검을 해볼까요?', 600, 'rule');
+    showQuickReplies([
+        { label: '가벼운 일상 점검', onSelect: () => proposeMoodCheck() },
+        { label: '재난·외상 경험 점검', onSelect: () => askGateway(true) },
+        { label: '지금 너무 힘들어요', onSelect: () => enterCrisisFlow() },
+    ]);
+}
+
 async function handleUserMessage(text) {
     if (!text.trim()) return;
     addMessage(text, 'user');
     userInput.value = '';
+    const intent = classifyUserIntent(text);
 
     // 1) 위기 감지 우선
     const crisis = detectCrisisLevel(text);
     if (crisis === 'high') {
         await enterCrisisFlow();
+        return;
+    }
+
+    if (intent === 'assessment') {
+        await offerAssessmentChoice();
         return;
     }
 
@@ -2604,7 +2665,7 @@ async function handleUserMessage(text) {
     }
 
     const r = await buildResponse(text, sentiment);
-    await botSay(r.text, r.typingMs);
+    await botSay(r.text, r.typingMs, r.source === 'gemini' ? 'gemini' : (r.source === 'limited' ? 'limited' : 'rule'));
 
     // LLM이 위기 신호를 감지했으면 위기 흐름으로
     if (r.crisisDetected) {
