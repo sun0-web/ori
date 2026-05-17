@@ -94,7 +94,30 @@ CORS(app, resources={r"/v1/*": {"origins": "*"}})
 
 # Gemini 초기화
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-GEMINI_MODEL_NAME = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+GEMINI_MODEL_NAME = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash-lite')
+GLOBAL_DAILY_LLM_LIMIT = int(os.environ.get('GLOBAL_DAILY_LLM_LIMIT', '300'))
+_LLM_DAILY_COUNTER = {'date': None, 'count': 0}
+
+
+def _today_key():
+    return datetime.utcnow().date().isoformat()
+
+
+def _reset_daily_counter_if_needed():
+    today = _today_key()
+    if _LLM_DAILY_COUNTER['date'] != today:
+        _LLM_DAILY_COUNTER['date'] = today
+        _LLM_DAILY_COUNTER['count'] = 0
+
+
+def _global_llm_quota_available():
+    _reset_daily_counter_if_needed()
+    return GLOBAL_DAILY_LLM_LIMIT <= 0 or _LLM_DAILY_COUNTER['count'] < GLOBAL_DAILY_LLM_LIMIT
+
+
+def _bump_global_llm_counter():
+    _reset_daily_counter_if_needed()
+    _LLM_DAILY_COUNTER['count'] += 1
 
 if GEMINI_AVAILABLE and GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
@@ -302,7 +325,7 @@ def aggregate():
 #   5) 폴백 — API 실패 시 None 반환 → 프론트가 규칙 기반으로 폴백
 # =====================================================================
 
-ORI_SYSTEM_PROMPT = """가장 중요: 사용자가 방금 보낸 메시지의 실제 의도를 먼저 파악하고 그 내용에 직접 답하세요. 자가진단 결과, 위험도, 모드 정보는 톤 조절용 참고자료일 뿐이며 사용자 메시지를 무시하거나 모든 말을 심리 상담으로 해석하지 마세요.
+ORI_SYSTEM_PROMPT = """가장 중요: 사용자가 방금 보낸 메시지의 실제 의도를 먼저 파악하고, 그 내용에 직접 답하세요. 자가진단 결과, 위험도, 모드 정보는 톤 조절용 참고자료일 뿐이며 사용자 메시지를 무시하거나 모든 말을 심리 상담으로 해석하지 마세요.
 
 당신은 '오리(Ori)'입니다. 한국 대학생 팀이 만든 심리 지지 챗봇으로,
 "근원의 나로 돌아가는 길" 이라는 컨셉을 가지고 있어요.
@@ -364,24 +387,41 @@ def is_dangerous_output(text):
     return any(re.search(p, text) for p in DANGEROUS_OUTPUT_PATTERNS + DIAGNOSIS_PATTERNS)
 
 
+def is_mental_user_message(text, sentiment=None):
+    """Return True when extra mental-health context is useful for Gemini."""
+    if sentiment in ('sad', 'anxious', 'angry', 'tired'):
+        return True
+    if not text:
+        return False
+    patterns = [
+        r'힘들', r'불안', r'우울', r'죽고 싶', r'자살', r'자해', r'무기력',
+        r'잠\s*못', r'잠이\s*안', r'공황', r'트라우마', r'상담', r'외롭',
+        r'괴로', r'슬프', r'화가', r'지쳤', r'무섭',
+    ]
+    return any(re.search(p, text) for p in patterns)
+
+
 def build_user_prompt(payload):
     """프론트에서 받은 컨텍스트를 Gemini 입력 텍스트로 변환"""
     parts = []
+    user_msg = payload.get('userMessage', '')
+    sentiment = payload.get('sentiment')
+    mental_context = is_mental_user_message(user_msg, sentiment)
 
     # 사용자 컨텍스트 (개인화)
     ctx = payload.get('context', {})
     mode = ctx.get('mode', 'daily')
     parts.append(f"[현재 모드: {mode}]")
 
-    if ctx.get('topLexicon'):
+    if mental_context and ctx.get('topLexicon'):
         words = ', '.join(ctx['topLexicon'][:8])
         parts.append(f"[사용자가 자주 쓰는 단어: {words}]")
 
-    if ctx.get('topThemes'):
+    if mental_context and ctx.get('topThemes'):
         themes = ', '.join(ctx['topThemes'][:3])
         parts.append(f"[반복되는 주제: {themes}]")
 
-    if ctx.get('lastAssessment'):
+    if mental_context and ctx.get('lastAssessment'):
         a = ctx['lastAssessment']
 
         # 신규 형식 (riskLevel/riskLabel 통합 결과) 우선 처리
@@ -425,16 +465,15 @@ def build_user_prompt(payload):
             # 옛 형식(type/total/level만 있는 경우) 호환
             parts.append(f"[최근 자가점검: {a.get('type','').upper()} {a.get('total','-')}점, {a.get('level','-')}]")
 
-    # 최근 대화 (최대 5턴)
+    # 최근 대화 (최대 2턴)
     history = payload.get('history', [])
     if history:
         parts.append("\n[최근 대화]")
-        for h in history[-5:]:
+        for h in history[-2:]:
             role = '사용자' if h.get('role') == 'user' else '오리'
             parts.append(f"{role}: {h.get('text','')}")
 
     # 이번 사용자 메시지
-    user_msg = payload.get('userMessage', '')
     parts.append(f"\n[이번 사용자 메시지]\n사용자: {user_msg}")
     parts.append("\n먼저 이번 사용자 메시지에 직접 답하세요. 필요할 때만 위 맥락을 톤 조절에 참고하세요. 사용자가 상담을 원하지 않는 일반 질문, 음식, 공부, 농담, 기능 테스트, 잡담을 말하면 일반 대화처럼 답하세요. 다른 설명·번호·접두어 없이 답변만:")
 
@@ -925,9 +964,6 @@ def classifier_status():
 @app.route('/v1/respond', methods=['POST'])
 def respond():
     """Gemini 응답 생성 — 다층 안전장치 통과 후 반환"""
-    if not (GEMINI_AVAILABLE and GEMINI_API_KEY):
-        return jsonify({'error': 'gemini-not-configured'}), 503
-
     data = request.get_json(silent=True) or {}
     user_msg = (data.get('userMessage') or '').strip()
     if not user_msg:
@@ -945,6 +981,31 @@ def respond():
         }), 200
 
     # === 2) Gemini 호출 ===
+    if not GEMINI_AVAILABLE:
+        return jsonify({
+            'fallback': True,
+            'error': 'api-error',
+            'reason': 'sdk-missing',
+            'text': '지금은 AI 응답을 불러올 수 없어 기본 응답으로 작동 중이에요.',
+            'source': 'limited',
+        }), 200
+    if not GEMINI_API_KEY:
+        return jsonify({
+            'fallback': True,
+            'error': 'api-error',
+            'reason': 'api-key-missing',
+            'text': '지금은 AI 응답 설정이 없어 기본 응답으로 작동 중이에요.',
+            'source': 'limited',
+        }), 200
+
+    if not _global_llm_quota_available():
+        return jsonify({
+            'fallback': True,
+            'reason': 'quota-limited',
+            'text': '오늘 AI 응답 한도가 잠시 찼어요. 기본 응답으로는 계속 이어갈 수 있어요.',
+            'source': 'limited',
+        }), 200
+
     try:
         # Safety Settings — 자해·위험 카테고리 강하게 차단
         safety_settings = [
@@ -974,13 +1035,14 @@ def respond():
             system_instruction=full_system_prompt,
             safety_settings=safety_settings,
             generation_config={
-                'temperature': 0.85,    # 살짝 다양성
-                'max_output_tokens': 200,
-                'top_p': 0.92,
+                'temperature': 0.7,
+                'max_output_tokens': 512 if is_mental_user_message(user_msg, data.get('sentiment')) else 256,
+                'top_p': 0.9,
             },
         )
 
         prompt = build_user_prompt(data)
+        _bump_global_llm_counter()
         result = model.generate_content(prompt)
 
         # Safety로 차단됐으면 candidates가 비어있거나 finish_reason이 SAFETY
@@ -1020,8 +1082,22 @@ def respond():
 
     except Exception as e:
         app.logger.exception('Gemini call failed')
-        # 폴백 신호 — 프론트가 규칙 기반으로 전환
-        return jsonify({'error': 'api-error', 'fallback': True, 'detail': str(e)[:200]}), 200
+        detail = str(e)[:200]
+        if '429' in detail or 'TooManyRequests' in detail or 'quota' in detail.lower():
+            return jsonify({
+                'fallback': True,
+                'error': 'api-error',
+                'reason': 'quota-exceeded',
+                'detail': '429 TooManyRequests',
+                'source': 'limited',
+            }), 200
+        return jsonify({
+            'error': 'api-error',
+            'reason': 'api-error',
+            'fallback': True,
+            'detail': detail,
+            'source': 'limited',
+        }), 200
 
 
 @app.route('/v1/health', methods=['GET'])

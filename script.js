@@ -36,6 +36,7 @@ const API_RESPOND_URL    = API_BASE ? `${API_BASE}/v1/respond`    : '';
 const API_CONTRIBUTE_URL = API_BASE ? `${API_BASE}/v1/contribute` : '';
 const API_FORGET_URL     = API_BASE ? `${API_BASE}/v1/contribute/forget` : '';
 const DEBUG_DISABLE_AUTO_SATISFACTION = false;
+const DAILY_LLM_LIMIT = 10;
 
 const state = {
     /* 대화 흐름 */
@@ -67,6 +68,7 @@ const state = {
     dailyModeStartedAt: null,   // 자유 대화 모드 진입 시각
     dailyUserTurns: 0,          // 자유 대화 모드 사용자 메시지 수
     autoAssessmentSuppressed: false, // "바로 이야기" 선택 후 자동 점검 제안 차단
+    llmUsage: { date: '', count: 0 },
     sessionCount: 0,
     lastSession: null,
 
@@ -100,6 +102,7 @@ function saveState() {
             dailyModeStartedAt: state.dailyModeStartedAt,
             dailyUserTurns: state.dailyUserTurns,
             autoAssessmentSuppressed: state.autoAssessmentSuppressed,
+            llmUsage: state.llmUsage,
             sessionCount: state.sessionCount,
             lastSession: state.lastSession,
             learningEnabled: state.learningEnabled,
@@ -129,6 +132,7 @@ function loadState() {
         if (typeof state.satisfactionPromptCount !== 'number') state.satisfactionPromptCount = 0;
         if (typeof state.dailyUserTurns !== 'number') state.dailyUserTurns = 0;
         if (typeof state.autoAssessmentSuppressed !== 'boolean') state.autoAssessmentSuppressed = false;
+        if (!state.llmUsage) state.llmUsage = { date: '', count: 0 };
         if (!state.entityMemory) state.entityMemory = {};
         if (!state.themeMemory) state.themeMemory = {};
         if (!state.episodicLog) state.episodicLog = [];
@@ -856,38 +860,111 @@ function trackAction(action) {
     if (recentActions.length > 5) recentActions.shift();
 }
 
+function todayKey() {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function normalizeLLMUsage() {
+    if (!state.llmUsage) state.llmUsage = { date: todayKey(), count: 0 };
+    const today = todayKey();
+    if (state.llmUsage.date !== today) {
+        state.llmUsage = { date: today, count: 0 };
+        saveState();
+    }
+    return state.llmUsage;
+}
+
+function isUserLLMLimitExceeded() {
+    return normalizeLLMUsage().count >= DAILY_LLM_LIMIT;
+}
+
+function incrementLLMUsage() {
+    const usage = normalizeLLMUsage();
+    usage.count += 1;
+    saveState();
+}
+
+function classifyUserIntent(text) {
+    const t = (text || '').trim().toLowerCase();
+    if (!t) return 'unknown';
+    if (/(죽고\s*싶|자살|자해|힘들|불안|우울|무기력|잠\s*못|잠이\s*안|공황|트라우마|외롭|괴로|상담|지쳤|무섭)/.test(t)) return 'mental';
+    if (/(레시피|요리|만드는\s*법|만들어|음식|먹었|먹고|짜장면|라면|김치|볶음밥|파스타|찌개|카레|떡볶이|치킨|밥|국수)/.test(t)) return 'food';
+    if (/(공부|과제|보고서|시험|정리|설명|요약|논문|발표|숙제|문제|풀이|개념)/.test(t)) return 'study';
+    if (/(봤어|했어|그냥|농담|잡담|오늘|어제|재밌|웃겨|좋았|심심)/.test(t)) return 'casual';
+    if (/(너\s*뭐야|작동|왜\s*이래|ai|제미나이|gemini|규칙\s*기반|오프라인|한도|제한|모델|api)/i.test(t)) return 'meta';
+    return 'unknown';
+}
+
+function isShortReaction(text) {
+    const t = (text || '').trim();
+    return /^[0-9]+$/.test(t) || /^(응|네|예|아니|아뇨|몰라|그냥|음|어|ㅇㅇ|ㄴㄴ|ok|okay)$/i.test(t);
+}
+
+function shouldCallLLM(text, sentiment, context = {}) {
+    if (state.flow !== 'idle') return false;
+    if (context.crisis === 'high') return false;
+    if (isShortReaction(text)) return false;
+    if ((text || '').trim().length < 8) return false;
+    if (isUserLLMLimitExceeded()) return false;
+    if (!API_BASE || !API_RESPOND_URL) return false;
+    return true;
+}
+
+function buildLimitedModeResponse(text, reason = 'quota-limited') {
+    const intent = classifyUserIntent(text);
+    if (intent === 'mental') {
+        const r = buildRuleResponse(text, classifySentiment(text), { forceMental: true });
+        return { ...r, source: 'rule' };
+    }
+    const replies = {
+        food: '지금은 AI 응답 한도 때문에 자세한 답변 생성은 어렵지만, 음식 이야기로 이어갈 수는 있어요. 잠시 후 다시 물어봐 주세요.',
+        study: '지금은 AI 응답이 제한되어 자세한 정리는 어렵지만, 자료를 주시면 기본 흐름은 이어갈 수 있어요. 잠시 후 다시 시도해 주세요.',
+        casual: '그렇군요. 그 이야기로 가볍게 이어가도 괜찮아요.',
+        meta: '지금은 AI 응답 한도가 잠시 제한되어 기본 응답으로 작동 중이에요. 그래서 답변이 단순할 수 있어요.',
+        unknown: '지금은 AI 응답이 제한되어 자세히 풀어내기 어려워요. 조금 뒤 다시 시도해 주세요.',
+    };
+    return { text: replies[intent] || replies.unknown, typingMs: 700, source: 'limited', reason };
+}
+
 /**
  * 메인 응답 빌더 — 행동을 결정하고 그에 맞는 텍스트를 조합
  * 반환: { text: string, typingMs: number }
  *   typingMs 는 호출자가 봇 타이핑 시간으로 사용
  */
 function buildGeneralRuleResponse(text) {
-    const t = (text || '').trim();
-    if (/(요리|레시피|메뉴)/.test(t)) {
-        return '간단한 요리라면 계란볶음밥이나 참치마요덮밥이 좋아요. 재료를 알려주시면 그 안에서 바로 만들 수 있는 메뉴로 골라드릴게요.';
-    }
-    if (/(공부|시험|과제)/.test(t)) {
-        return '공부는 25분 집중하고 5분 쉬는 식으로 작게 끊어가면 시작하기 쉬워요. 과목이나 목표를 말해주시면 같이 계획을 잡아볼게요.';
-    }
-    if (/(농담|웃긴|개그)/.test(t)) {
-        return '짧은 농담 하나 할게요. 왜 컴퓨터는 추울 때 창문을 닫을까요? 윈도우가 너무 많아서요.';
-    }
-    if (/(테스트|작동|응답)/.test(t)) {
-        return '테스트 잘 받았어요. 지금 메시지에 맞춰 응답하고 있어요.';
-    }
-    if (/(잡담|심심|안녕)/.test(t)) {
-        return '좋아요, 편하게 잡담해요. 오늘 가장 먼저 떠오른 주제부터 던져주세요.';
-    }
+    const intent = classifyUserIntent(text);
+    if (intent === 'food') return '지금은 AI 응답 한도 때문에 자세한 답변 생성은 어렵지만, 음식 이야기로 이어갈 수는 있어요. 잠시 후 다시 물어봐 주세요.';
+    if (intent === 'study') return '지금은 AI 응답이 제한되어 자세한 정리는 어렵지만, 자료를 주시면 기본 흐름은 이어갈 수 있어요. 잠시 후 다시 시도해 주세요.';
+    if (intent === 'casual') return '그렇군요. 그 이야기로 가볍게 이어가도 괜찮아요.';
+    if (intent === 'meta') return '지금은 AI 응답 한도가 잠시 제한되어 기본 응답으로 작동 중이에요. 그래서 답변이 단순할 수 있어요.';
+    if (intent === 'unknown') return '지금은 AI 응답이 제한되어 자세히 풀어내기 어려워요. 조금 뒤 다시 시도해 주세요.';
     return null;
 }
 
-function buildRuleResponse(text, sentiment) {
-    const generalResponse = state.flow === 'idle' && state.mode === 'daily'
+function buildRuleResponse(text, sentiment, options = {}) {
+    const intent = classifyUserIntent(text);
+    const allowMentalResponse = options.forceMental || intent === 'mental';
+    const generalResponse = state.flow === 'idle' && state.mode === 'daily' && !allowMentalResponse
         ? buildGeneralRuleResponse(text)
         : null;
     if (generalResponse) {
         trackResponse(generalResponse);
         return { text: generalResponse, typingMs: 900 };
+    }
+
+    if (!allowMentalResponse && isShortReaction(text)) {
+        const response = pickFromPool(RESPONSE_POOLS.ack, sentiment) || '네.';
+        trackResponse(response);
+        return { text: response, typingMs: 500 };
+    }
+
+    if (!allowMentalResponse && state.flow === 'idle' && state.mode === 'daily') {
+        const limited = buildLimitedModeResponse(text, 'rule-fallback');
+        trackResponse(limited.text);
+        return { text: limited.text, typingMs: limited.typingMs };
     }
 
     const userMsgLength = (text || '').length;
@@ -1021,7 +1098,7 @@ function buildLLMContext() {
 /** 백엔드 호출 — Gemini 응답 받아오기. 실패 시 null 반환 */
 async function callLLMBackend(text, sentiment) {
     if (!API_RESPOND_URL) {
-        console.log('[Ori] response source=rule fallback=backend-url-missing');
+        console.log('[Ori] source=rule');
         state.lastLLMFallbackReason = 'backend-url-missing';
         return null;
     }
@@ -1044,6 +1121,7 @@ async function callLLMBackend(text, sentiment) {
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     try {
+        incrementLLMUsage();
         const res = await fetch(API_RESPOND_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1053,35 +1131,42 @@ async function callLLMBackend(text, sentiment) {
         clearTimeout(timeoutId);
 
         if (!res.ok) {
-            console.log(`[Ori] response source=rule fallback=backend-http-${res.status}`);
+            console.log('[Ori] source=rule');
             state.lastLLMFallbackReason = `backend-http-${res.status}`;
             return null;
         }
         const data = await res.json();
 
-        // 백엔드가 fallback 신호 보냈으면 null (규칙 기반으로)
+        // 백엔드가 fallback 신호를 보내도 제한 모드는 상담형 규칙 엔진으로 넘기지 않는다.
         if (data.fallback || !data.text) {
-            const reason = data.error || 'empty-backend-response';
-            console.log(`[Ori] response source=rule fallback=${reason}`);
+            const reason = data.reason || data.error || 'empty-backend-response';
             state.lastLLMFallbackReason = reason;
+            if (data.source === 'limited' || reason === 'quota-limited' || reason === 'quota-exceeded') {
+                console.log(`[Ori] source=limited reason=${reason}`);
+                return {
+                    text: data.text || buildLimitedModeResponse(text, reason).text,
+                    source: 'limited',
+                    reason,
+                };
+            }
+            console.log('[Ori] source=rule');
             return null;
         }
 
         // 위기 감지 신호 — 호출자가 위기 흐름으로 라우팅하도록
         if (data.crisisDetected) {
-            console.log('[Ori] response source=gemini');
+            console.log('[Ori] source=gemini');
             state.lastLLMFallbackReason = null;
             return { text: data.text, source: 'safety-bypass', crisisDetected: true };
         }
 
-        console.log(`[Ori] response source=${data.source || 'gemini'}`);
+        console.log(`[Ori] source=${data.source || 'gemini'}`);
         state.lastLLMFallbackReason = null;
         return { text: data.text, source: data.source || 'gemini' };
     } catch (err) {
         clearTimeout(timeoutId);
         const reason = err.name === 'AbortError' ? 'backend-timeout' : `backend-failed:${err.message}`;
-        console.log(`[Ori] response source=rule fallback=${reason}`);
-        console.warn('[Ori] LLM 호출 실패, 규칙 기반으로 폴백:', err.message);
+        console.log(`[Ori] LLM fetch failed: ${err.message}`);
         state.lastLLMFallbackReason = reason;
         return null;
     }
@@ -1093,7 +1178,15 @@ async function callLLMBackend(text, sentiment) {
  */
 async function buildResponse(text, sentiment) {
     // 1) LLM 시도
-    const llm = await callLLMBackend(text, sentiment);
+    if (isUserLLMLimitExceeded()) {
+        updateChatModelBadge('limited');
+        console.log('[Ori] source=limited reason=quota-limited');
+        return buildLimitedModeResponse(text, 'quota-limited');
+    }
+
+    const crisis = detectCrisisLevel(text);
+    const canCallLLM = shouldCallLLM(text, sentiment, { crisis });
+    const llm = canCallLLM ? await callLLMBackend(text, sentiment) : null;
     if (llm) {
         updateChatModelBadge(llm.source);
         // LLM 응답에 맞춰 타이핑 시간 — 텍스트 길이 비례
@@ -1112,6 +1205,7 @@ async function buildResponse(text, sentiment) {
 
     // 2) 폴백 — 규칙 기반
     updateChatModelBadge(state.lastLLMFallbackReason && state.lastLLMFallbackReason.startsWith('backend-') ? 'offline' : 'rule');
+    console.log('[Ori] source=rule');
     const r = buildRuleResponse(text, sentiment);
     return { ...r, source: 'rule' };
 }
@@ -1398,10 +1492,12 @@ function updateChatModelBadge(source) {
     if (source === 'gemini' || source === 'safety-bypass') {
         badge.textContent = 'AI · Gemini';
         badge.classList.add('llm');
+    } else if (source === 'limited') {
+        badge.textContent = 'AI 제한 중';
     } else if (source === 'offline') {
         badge.textContent = '오프라인';
     } else {
-        badge.textContent = '규칙 기반';
+        badge.textContent = '기본 응답';
     }
 }
 
