@@ -1121,7 +1121,6 @@ async function callLLMBackend(text, sentiment) {
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     try {
-        incrementLLMUsage();
         const res = await fetch(API_RESPOND_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1162,6 +1161,9 @@ async function callLLMBackend(text, sentiment) {
 
         console.log(`[Ori] source=${data.source || 'gemini'}`);
         state.lastLLMFallbackReason = null;
+        if (data.source === 'gemini' && data.text && data.fallback !== true) {
+            incrementLLMUsage();
+        }
         return { text: data.text, source: data.source || 'gemini' };
     } catch (err) {
         clearTimeout(timeoutId);

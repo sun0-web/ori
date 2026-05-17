@@ -61,6 +61,7 @@ API 키 발급:
 
 import os
 import re
+from collections import deque
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -97,6 +98,7 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 GEMINI_MODEL_NAME = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash-lite')
 GLOBAL_DAILY_LLM_LIMIT = int(os.environ.get('GLOBAL_DAILY_LLM_LIMIT', '1000'))
 _LLM_DAILY_COUNTER = {'date': None, 'count': 0}
+_recent_gemini_calls = deque(maxlen=20)
 
 
 def _today_key():
@@ -118,6 +120,16 @@ def _global_llm_quota_available():
 def _bump_global_llm_counter():
     _reset_daily_counter_if_needed()
     _LLM_DAILY_COUNTER['count'] += 1
+
+
+def can_call_gemini_now():
+    now = datetime.utcnow()
+    while _recent_gemini_calls and (now - _recent_gemini_calls[0]).total_seconds() > 60:
+        _recent_gemini_calls.popleft()
+    if len(_recent_gemini_calls) >= 12:
+        return False
+    _recent_gemini_calls.append(now)
+    return True
 
 if GEMINI_AVAILABLE and GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
@@ -326,6 +338,18 @@ def aggregate():
 # =====================================================================
 
 ORI_SYSTEM_PROMPT = """가장 중요: 사용자가 방금 보낸 메시지의 실제 의도를 먼저 파악하고, 그 내용에 직접 답하세요. 자가진단 결과, 위험도, 모드 정보는 톤 조절용 참고자료일 뿐이며 사용자 메시지를 무시하거나 모든 말을 심리 상담으로 해석하지 마세요.
+
+## 응답 원칙
+- 사용자가 정보·지식·방법을 물으면, 예를 들어 레시피, 공부, 설명, 정리 요청이면 먼저 핵심 답을 1~3문장으로 제공하세요.
+- 추가 정보가 필요하더라도 질문만 하고 끝내지 마세요.
+- 기본 답변을 먼저 제시한 뒤, 필요한 경우 마지막에 선택 질문을 덧붙이세요.
+- 사용자가 감정·상태를 표현하면 공감 먼저 하되, 캐묻지 마세요.
+- “어떤 종류를 원하시나요?”처럼 되묻기만 하고 끝내지 마세요.
+
+예:
+사용자: “짜장면 레시피 알려줘”
+나쁜 응답: “어떤 종류의 짜장면을 원하시나요?”
+좋은 응답: “기본 짜장면은 양파와 고기를 볶고, 춘장이나 짜장가루를 넣어 함께 볶은 뒤 물과 전분물로 농도를 맞춰 삶은 면에 얹으면 됩니다. 간짜장처럼 되직하게 만들지, 일반 짜장처럼 소스를 넉넉히 만들지도 선택할 수 있어요.”
 
 당신은 '오리(Ori)'입니다. 한국 대학생 팀이 만든 심리 지지 챗봇으로,
 "근원의 나로 돌아가는 길" 이라는 컨셉을 가지고 있어요.
@@ -1042,6 +1066,14 @@ def respond():
         )
 
         prompt = build_user_prompt(data)
+        if not can_call_gemini_now():
+            return jsonify({
+                'fallback': True,
+                'reason': 'minute-throttle',
+                'source': 'limited',
+                'text': '현재 AI 요청이 잠시 몰려 일반 대화 답변을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+            }), 200
+
         _bump_global_llm_counter()
         result = model.generate_content(prompt)
 
